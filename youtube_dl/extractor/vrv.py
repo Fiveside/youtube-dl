@@ -27,13 +27,14 @@ class VRVBaseIE(InfoExtractor):
 
     def _call_api(self, path, video_id, note, data=None):
         base_url = self._API_DOMAIN + '/core/' + path
-        encoded_query = compat_urllib_parse_urlencode({
+        auth_header = {
             'oauth_consumer_key': self._API_PARAMS['oAuthKey'],
             'oauth_nonce': ''.join([random.choice(string.ascii_letters) for _ in range(32)]),
             'oauth_signature_method': 'HMAC-SHA1',
-            'oauth_timestamp': int(time.time()),
+            'oauth_timestamp': str(int(time.time())),
             'oauth_version': '1.0',
-        })
+        }
+        encoded_query = compat_urllib_parse_urlencode(auth_header)
         headers = self.geo_verification_headers()
         if data:
             data = json.dumps(data).encode()
@@ -43,9 +44,10 @@ class VRVBaseIE(InfoExtractor):
         oauth_signature = base64.b64encode(hmac.new(
             (self._API_PARAMS['oAuthSecret'] + '&').encode('ascii'),
             base_string.encode(), hashlib.sha1).digest()).decode()
-        encoded_query += '&oauth_signature=' + compat_urlparse.quote(oauth_signature, '')
+        auth_header['oauth_signature'] = oauth_signature
+        headers['authorization'] = ' '.join(('='.join((x,y)) for x, y in auth_header.items()))
         return self._download_json(
-            '?'.join([base_url, encoded_query]), video_id,
+            base_url, video_id,
             note='Downloading %s JSON metadata' % note, headers=headers, data=data)
 
     def _call_cms(self, path, video_id, note):
@@ -72,20 +74,34 @@ class VRVBaseIE(InfoExtractor):
 class VRVIE(VRVBaseIE):
     IE_NAME = 'vrv'
     _VALID_URL = r'https?://(?:www\.)?vrv\.co/watch/(?P<id>[A-Z0-9]+)'
-    _TEST = {
+    _TESTS = [
+    { # Available without an account
+        'url': 'https://vrv.co/watch/G62PQN326/Dofus-Kerubs-Bazaar:Kerub',
+        'info_dict': {
+            'id': 'G62PQN326',
+            'ext': 'mp4',
+            'title': 'Kerub',
+            'description': 'md5:3b1fb035c926b97280702ac9cf32211b',
+            'uploader_id': 'vrvselect',
+        },
+        'params': {
+            # m3u8 download
+            'skip_download': True,
+        },
+    }, { # Maturity wall (requires login?)
         'url': 'https://vrv.co/watch/GR9PNZ396/Hidden-America-with-Jonah-Ray:BOSTON-WHERE-THE-PAST-IS-THE-PRESENT',
         'info_dict': {
             'id': 'GR9PNZ396',
             'ext': 'mp4',
             'title': 'BOSTON: WHERE THE PAST IS THE PRESENT',
             'description': 'md5:4ec8844ac262ca2df9e67c0983c6b83f',
-            'uploader_id': 'seeso',
+            'uploader_id': 'vrvselect',
         },
         'params': {
             # m3u8 download
             'skip_download': True,
         },
-    }
+    }]
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
